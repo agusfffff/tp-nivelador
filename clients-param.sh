@@ -23,13 +23,15 @@ services:
       context: ./services/server
       dockerfile: Dockerfile
     container_name: server
+    ports: 
+      - "5678:5678"
     environment:
       - PYTHONUNBUFFERED=1
       - SERVER_HOST=server
       - SERVER_PORT=5678
 EOF
 
-for i in $(seq 1 "$CLIENT_AMOUNT"); do
+for i in $(seq 0 "$CLIENT_AMOUNT"); do
     cat >> "$OUTPUT_FILE" <<EOF
 
   client_$i:
