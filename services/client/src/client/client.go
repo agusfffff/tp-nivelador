@@ -1,6 +1,7 @@
 package client
 
 import (
+	"io"
 	"net"
 	"time"
 
@@ -92,7 +93,7 @@ func (client *Client) Run() error {
 	for {
 		line, readErr := reader.ReadString('\n')
 
-		if readErr != nil && readErr.Error() != "EOF" {
+		if readErr != nil && readErr != io.EOF {
 			logger.Error("read-input", logger.Fail)
 			return readErr
 		}
@@ -129,7 +130,7 @@ func (client *Client) Run() error {
 			return errFlush
 		}
 
-		if readErr != nil {
+		if readErr == io.EOF {
 			break
 		}
 	}
