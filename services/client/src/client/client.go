@@ -4,6 +4,9 @@ import (
 	"net"
 	"time"
 
+	"bufio"
+	"os"
+
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
@@ -19,6 +22,8 @@ type ClientConfig struct {
 	ServerHost string
 	ServerPort string
 	AgencyId   string
+	InputFile  string
+	OutputFile string
 }
 
 type Client struct {
@@ -62,30 +67,73 @@ func (client *Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
 
-	for messageId := range ECHO_CLIENT_MESSAGE_AMOUNT {
-		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
-		logger.Info(mainAction, logger.InProgress, messageArgs...)
+	input_file, err := os.Open(client.config.InputFile)
 
-		clientMessage := client.config.AgencyId
+	if err != nil {
+		logger.Error("Error opening file", logger.Fail)
+		return err
+	}
 
-		if err := safe_socket.SendAll(client.conn, []byte(clientMessage)); err != nil {
-			logger.Error("send-message", logger.Fail, messageArgs...)
+	defer input_file.Close()
+
+	output_file, err := os.Create(client.config.OutputFile)
+
+	if err != nil {
+		logger.Error("Error creating file", logger.Fail)
+		return err
+	}
+
+	defer output_file.Close()
+
+	reader := bufio.NewReader(input_file)
+
+	writer := bufio.NewWriter(output_file)
+
+	for {
+		line, readErr := reader.ReadString('\n')
+
+		if readErr != nil && readErr.Error() != "EOF" {
+			logger.Error("read-input", logger.Fail)
+			return readErr
+		}
+
+		if len(line) == 0 {
+			break
+		}
+
+		err = safe_socket.SendAll(client.conn, []byte(line))
+
+		if err != nil {
+			logger.Error("send-message", logger.Fail)
 			return err
 		}
 
 		responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
+
 		if err != nil {
-			logger.Error("recv-response", logger.Fail, messageArgs...)
+			logger.Error("recv-response", logger.Fail)
 			return err
 		}
 
-		if string(responseBuffer) != clientMessage {
-			logger.Error("check-response", logger.Fail, messageArgs...)
-			return err
+		_, errWrite := writer.WriteString(string(responseBuffer))
+
+		if errWrite != nil {
+			logger.Error("write-output", logger.Fail)
+			return errWrite
 		}
 
-		time.Sleep(ECHO_CLIENT_MESSAGE_DELAY_MS * time.Millisecond)
+		errFlush := writer.Flush()
+
+		if errFlush != nil {
+			logger.Error("flush-output", logger.Fail)
+			return errFlush
+		}
+
+		if readErr != nil {
+			break
+		}
 	}
+
 	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
 
 	return nil

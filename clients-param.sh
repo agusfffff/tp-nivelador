@@ -7,12 +7,14 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
-CLIENT_AMOUNT=$1
+CLIENT_AMOUNT=$1 
 
 if ! [[ "$CLIENT_AMOUNT" =~ ^[0-9]+$ ]] || [ "$CLIENT_AMOUNT" -le 0 ]; then
     echo "Error: la cantidad de clientes debe ser un numero entero positivo" >&2
     exit 1
 fi
+
+CLIENT_AMOUNT=$(($1 )) 
 
 OUTPUT_FILE="docker-compose.yaml"
 
@@ -31,7 +33,7 @@ services:
       - SERVER_PORT=5678
 EOF
 
-for i in $(seq 0 "$CLIENT_AMOUNT"); do
+for i in $(seq 1 "$CLIENT_AMOUNT"); do
     cat >> "$OUTPUT_FILE" <<EOF
 
   client_$i:
@@ -45,6 +47,12 @@ for i in $(seq 0 "$CLIENT_AMOUNT"); do
       - AGENCY_ID=$i
       - SERVER_HOST=server
       - SERVER_PORT=5678
+      - INPUT_FILE=/input/input-$i.csv
+      - OUTPUT_FILE=/output/output-$i.csv
+    volumes: 
+      - ./output:/output
+      - ./input/input-$i.csv:/input/input-$i.csv
+
 EOF
 done
 
