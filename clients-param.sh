@@ -14,7 +14,7 @@ if ! [[ "$CLIENT_AMOUNT" =~ ^[0-9]+$ ]] || [ "$CLIENT_AMOUNT" -le 0 ]; then
     exit 1
 fi
 
-CLIENT_AMOUNT=$(($1 )) 
+CLIENT_AMOUNT=$(($1 - 1 )) 
 
 OUTPUT_FILE="docker-compose.yaml"
 
@@ -33,7 +33,7 @@ services:
       - SERVER_PORT=5678
 EOF
 
-for i in $(seq 1 "$CLIENT_AMOUNT"); do
+for i in $(seq 0 "$CLIENT_AMOUNT"); do
     cat >> "$OUTPUT_FILE" <<EOF
 
   client_$i:
