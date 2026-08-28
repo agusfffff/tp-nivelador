@@ -16,8 +16,6 @@ const CONNECTION_ATTEMPTS_MAX = 3
 const CONNECTION_ATTEMPS_DELAY_MS = 500
 
 const ECHO_CLIENT_BUFFER_SIZE = 512
-const ECHO_CLIENT_MESSAGE_AMOUNT = 3
-const ECHO_CLIENT_MESSAGE_DELAY_MS = 1000
 
 type ClientConfig struct {
 	ServerHost string
@@ -64,70 +62,67 @@ func connectToServer(host, port string) (net.Conn, error) {
 	return conn, err
 }
 
+func get_input_file(inputFilePath string) (*os.File, error) {
+	file, err := os.Open(inputFilePath)
+
+	if err != nil {
+		logger.Error("Error opening file", logger.Fail)
+		return nil, err
+	}
+
+	defer file.Close()
+
+	return file, nil
+}
+
+func get_output_file(outputFilePath string) (*os.File, error) {
+	file, err := os.Create(outputFilePath)
+
+	if err != nil {
+		logger.Error("Error creating file", logger.Fail)
+		return nil, err
+	}
+
+	defer file.Close()
+
+	return file, nil
+}
+
 func (client *Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
 
-	input_file, err := os.Open(client.config.InputFile)
+	inputFile, err := get_input_file(client.config.InputFile)
 
 	if err != nil {
-		logger.Error("Error opening file", logger.Fail)
 		return err
 	}
 
-	defer input_file.Close()
-
-	output_file, err := os.Create(client.config.OutputFile)
+	outputFile, err := get_output_file(client.config.OutputFile)
 
 	if err != nil {
-		logger.Error("Error creating file", logger.Fail)
 		return err
 	}
 
-	defer output_file.Close()
+	reader := bufio.NewReader(inputFile)
 
-	reader := bufio.NewReader(input_file)
-
-	writer := bufio.NewWriter(output_file)
+	writer := bufio.NewWriter(outputFile)
 
 	for {
-		line, readErr := reader.ReadString('\n')
 
-		if readErr != nil && readErr != io.EOF {
-			logger.Error("read-input", logger.Fail)
-			return readErr
-		}
+		line, readErr := client.read_line(reader)
 
 		if len(line) == 0 {
 			break
 		}
 
-		err = safe_socket.SendAll(client.conn, []byte(line))
+		response, procErr := client.processLine(line)
+		if procErr != nil {
+			return procErr
+		}
 
-		if err != nil {
-			logger.Error("send-message", logger.Fail)
+		if err := client.write_line(response, writer); err != nil {
 			return err
-		}
-
-		responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
-
-		if err != nil {
-			logger.Error("recv-response", logger.Fail)
-			return err
-		}
-
-		_, errWrite := writer.WriteString(string(responseBuffer))
-
-		if errWrite != nil {
-			logger.Error("write-output", logger.Fail)
-			return errWrite
-		}
-
-		errFlush := writer.Flush()
-
-		if errFlush != nil {
-			logger.Error("flush-output", logger.Fail)
-			return errFlush
 		}
 
 		if readErr == io.EOF {
@@ -138,4 +133,53 @@ func (client *Client) Run() error {
 	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
 
 	return nil
+}
+
+func (client *Client) processLine(line string) (string, error) {
+	err := safe_socket.SendAll(client.conn, []byte(line))
+
+	if err != nil {
+		logger.Error("send-message", logger.Fail)
+		return "", err
+	}
+
+	responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
+
+	responseString := string(responseBuffer)
+
+	if err != nil {
+		logger.Error("recv-response", logger.Fail)
+		return responseString, err
+	}
+
+	return responseString, nil
+}
+
+func (client *Client) write_line(responseBuffer string, writer *bufio.Writer) error {
+	_, errWrite := writer.WriteString(string(responseBuffer))
+
+	if errWrite != nil {
+		logger.Error("write-output", logger.Fail)
+		return errWrite
+	}
+
+	errFlush := writer.Flush()
+
+	if errFlush != nil {
+		logger.Error("flush-output", logger.Fail)
+		return errFlush
+	}
+	return nil
+}
+
+func (client *Client) read_line(reader *bufio.Reader) (string, error) {
+
+	line, readErr := reader.ReadString('\n')
+
+	if readErr != nil && readErr != io.EOF {
+		logger.Error("read-input", logger.Fail)
+		return "", readErr
+	}
+
+	return line, nil
 }
