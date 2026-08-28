@@ -8,15 +8,16 @@ func SendAll(socket io.Writer, bytes []byte) error {
 	for {
 		n, err := socket.Write(bytes[total:])
 
-		if err != nil {
-			return err
-		}
-
 		total += n
 
 		if total == len(bytes) {
 			return nil
 		}
+
+		if err != nil {
+			return err
+		}
+
 	}
 
 }
@@ -27,18 +28,14 @@ func RecvAll(socket io.Reader, size int) ([]byte, error) {
 	for {
 		n, err := socket.Read(buff[total:])
 
-		if err != nil && err != io.EOF {
-			return buff, err
-		}
-
-		if err == io.EOF && n == 0 {
-			return buff, nil
-		}
-
 		total += n
 
 		if total == size {
 			return buff, nil
+		}
+
+		if err != nil {
+			return buff[:total], err
 		}
 
 	}
