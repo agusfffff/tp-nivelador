@@ -1,21 +1,23 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"bufio"
 	"os"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
+	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/protocol"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
 const CONNECTION_ATTEMPTS_MAX = 3
 const CONNECTION_ATTEMPS_DELAY_MS = 500
-
-const ECHO_CLIENT_BUFFER_SIZE = 512
 
 type ClientConfig struct {
 	ServerHost string
@@ -28,6 +30,7 @@ type ClientConfig struct {
 type Client struct {
 	conn   net.Conn
 	config ClientConfig
+	agency byte
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -37,8 +40,12 @@ func NewClient(config ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	client := &Client{conn: conn, config: config}
-	return client, nil
+	agencyId, err := strconv.Atoi(config.AgencyId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{conn: conn, config: config, agency: byte(agencyId)}, nil
 }
 
 func connectToServer(host, port string) (net.Conn, error) {
@@ -62,124 +69,129 @@ func connectToServer(host, port string) (net.Conn, error) {
 	return conn, err
 }
 
-func get_input_file(inputFilePath string) (*os.File, error) {
-	file, err := os.Open(inputFilePath)
-
-	if err != nil {
-		logger.Error("Error opening file", logger.Fail)
-		return nil, err
-	}
-
-	defer file.Close()
-
-	return file, nil
-}
-
-func get_output_file(outputFilePath string) (*os.File, error) {
-	file, err := os.Create(outputFilePath)
-
-	if err != nil {
-		logger.Error("Error creating file", logger.Fail)
-		return nil, err
-	}
-
-	defer file.Close()
-
-	return file, nil
-}
-
 func (client *Client) Run() error {
-	const mainAction = "test-echo-server"
 	defer client.conn.Close()
 
-	inputFile, err := get_input_file(client.config.InputFile)
-
-	if err != nil {
+	if err := client.sendBets(); err != nil {
 		return err
 	}
 
-	outputFile, err := get_output_file(client.config.OutputFile)
-
-	if err != nil {
+	if err := safe_socket.SendAll(client.conn, protocol.EncodeEnd()); err != nil {
+		logger.Error("send-end", logger.Fail)
 		return err
 	}
+
+	if err := client.receiveWinners(); err != nil {
+		return err
+	}
+
+	logger.Info("client-run", logger.Success, "agency-id", client.config.AgencyId)
+	return nil
+}
+
+func (client *Client) sendBets() error {
+	inputFile, err := os.Open(client.config.InputFile)
+	if err != nil {
+		logger.Error("open-input-file", logger.Fail)
+		return err
+	}
+	defer inputFile.Close()
 
 	reader := bufio.NewReader(inputFile)
 
-	writer := bufio.NewWriter(outputFile)
-
 	for {
+		line, readErr := reader.ReadString('\n')
+		trimmed := strings.TrimRight(line, "\r\n")
 
-		line, readErr := client.read_line(reader)
+		if trimmed != "" {
+			row := strings.Split(trimmed, ",")
 
-		if len(line) == 0 {
-			break
-		}
+			documento, err := strconv.ParseUint(row[2], 10, 32)
+			if err != nil {
+				return err
+			}
+			numberValue, err := strconv.ParseUint(row[4], 10, 16)
+			if err != nil {
+				return err
+			}
 
-		response, procErr := client.processLine(line)
-		if procErr != nil {
-			return procErr
-		}
+			message := protocol.EncodeBet(client.agency, row[0], row[1], uint32(documento), row[3], uint16(numberValue))
+			if err := safe_socket.SendAll(client.conn, message); err != nil {
+				logger.Error("send-bet", logger.Fail)
+				return err
+			}
 
-		if err := client.write_line(response, writer); err != nil {
-			return err
+			tipo, payload, err := protocol.ReadMessage(client.conn)
+			if err != nil {
+				logger.Error("recv-bet-ack", logger.Fail)
+				return err
+			}
+			if tipo != protocol.BetAck {
+				return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
+			}
+			protocol.DecodeBetAck(payload)
 		}
 
 		if readErr == io.EOF {
 			break
 		}
+		if readErr != nil {
+			logger.Error("read-input", logger.Fail)
+			return readErr
+		}
 	}
-
-	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
 
 	return nil
 }
 
-func (client *Client) processLine(line string) (string, error) {
-	err := safe_socket.SendAll(client.conn, []byte(line))
-
+func (client *Client) receiveWinners() error {
+	outputFile, err := os.Create(client.config.OutputFile)
 	if err != nil {
-		logger.Error("send-message", logger.Fail)
-		return "", err
+		logger.Error("create-output-file", logger.Fail)
+		return err
+	}
+	defer outputFile.Close()
+
+	writer := bufio.NewWriter(outputFile)
+
+	for {
+		tipo, payload, err := protocol.ReadMessage(client.conn)
+		if err != nil {
+			logger.Error("recv-message", logger.Fail)
+			return err
+		}
+
+		if tipo == protocol.End {
+			break
+		}
+
+		if tipo != protocol.Winner {
+			return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
+		}
+
+		winner := protocol.DecodeWinner(payload)
+		row := []string{
+			winner.Nombre,
+			winner.Apellido,
+			strconv.FormatUint(uint64(winner.Documento), 10),
+			winner.Cumpleanos,
+			strconv.FormatUint(uint64(winner.Number), 10),
+		}
+
+		if _, err := writer.WriteString(strings.Join(row, ",") + "\n"); err != nil {
+			logger.Error("write-output", logger.Fail)
+			return err
+		}
+		if err := writer.Flush(); err != nil {
+			logger.Error("flush-output", logger.Fail)
+			return err
+		}
+
+		if err := safe_socket.SendAll(client.conn, protocol.EncodeBetAck(winner.Number)); err != nil {
+			logger.Error("send-winner-ack", logger.Fail)
+			return err
+		}
 	}
 
-	responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
-
-	responseString := string(responseBuffer)
-
-	if err != nil {
-		logger.Error("recv-response", logger.Fail)
-		return responseString, err
-	}
-
-	return responseString, nil
-}
-
-func (client *Client) write_line(responseBuffer string, writer *bufio.Writer) error {
-	_, errWrite := writer.WriteString(string(responseBuffer))
-
-	if errWrite != nil {
-		logger.Error("write-output", logger.Fail)
-		return errWrite
-	}
-
-	errFlush := writer.Flush()
-
-	if errFlush != nil {
-		logger.Error("flush-output", logger.Fail)
-		return errFlush
-	}
 	return nil
-}
-
-func (client *Client) read_line(reader *bufio.Reader) (string, error) {
-
-	line, readErr := reader.ReadString('\n')
-
-	if readErr != nil && readErr != io.EOF {
-		logger.Error("read-input", logger.Fail)
-		return "", readErr
-	}
-
-	return line, nil
 }
