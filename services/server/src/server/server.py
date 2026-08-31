@@ -1,34 +1,50 @@
 import socket
 import logger
 import safe_socket
-
-_ECHO_SERVER_MESSAGE_SIZE = 1024
-
+from protocol import read_message, encode_bet_ack, encode_winner,encode_end
+from lottery import Bet, Lottery
 
 class Server:
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
         self.server_port = server_port
+        self.lottery = Lottery("bets.csv")
 
     def _handle_client(self, client_socket):
         action = "handle-client"
         message_amount = 0
+        agency = None
         try:
             logger.info(action, logger.LogResult.in_progress)
             while True:
-                client_message = safe_socket.recv_all(
-                    client_socket, _ECHO_SERVER_MESSAGE_SIZE
-                )
-                if not client_message:
-                    logger.info(
-                        action,
-                        logger.LogResult.success,
-                        "messages-amount",
-                        message_amount,
-                    )
-                    return
+                data = read_message(client_socket)
+                if data is None: 
+                    break 
+                agency, nombre, apellido, documento, birthday, number = data 
+                bet = Bet(agency, nombre, apellido, documento, birthday, number)
+                self.lottery.store_bets([bet])
+
                 message_amount += 1
-                safe_socket.send_all(client_socket, client_message)
+                safe_socket.send_all(client_socket, encode_bet_ack(number))
+
+            for bet in self.lottery.load_bets(): 
+                if bet.agency_id == agency and self.lottery.has_won(bet): 
+                    safe_socket.send_all(
+                        client_socket,
+                        encode_winner(
+                            bet.first_name,
+                            bet.last_name,
+                            bet.document,
+                            bet.birthdate,
+                            bet.number,
+                        ),
+                    )
+
+                    data = read_message(client_socket)
+                    if data is None:
+                        break                     
+
+            safe_socket.send_all(client_socket, encode_end())
         except Exception as e:
             logger.error(
                 action, logger.LogResult.fail, "messages-amount", message_amount
@@ -49,4 +65,10 @@ class Server:
                     raise e
                 logger.info(action, logger.LogResult.success)
 
-                self._handle_client(client_socket)
+                try:
+                    self._handle_client(client_socket)
+                except Exception:
+                    pass
+                finally:
+                    client_socket.close()
+
