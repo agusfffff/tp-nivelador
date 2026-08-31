@@ -1,7 +1,7 @@
 import socket
 import logger
 import safe_socket
-from protocol import read_message, encode_bet_ack, encode_winner,encode_end
+from protocol import read_message, encode_bet_ack, encode_winner, encode_end, Winner
 from lottery import Bet, Lottery
 
 class Server:
@@ -31,13 +31,13 @@ class Server:
                 if bet.agency_id == agency and self.lottery.has_won(bet): 
                     safe_socket.send_all(
                         client_socket,
-                        encode_winner(
-                            bet.first_name,
-                            bet.last_name,
-                            bet.document,
-                            bet.birthdate,
-                            bet.number,
-                        ),
+                        encode_winner(Winner(
+                            nombre=bet.first_name,
+                            apellido=bet.last_name,
+                            documento=bet.document,
+                            cumpleanos=bet.birthdate,
+                            number=bet.number,
+                        )),
                     )
 
                     data = read_message(client_socket)
