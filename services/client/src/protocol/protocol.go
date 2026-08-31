@@ -43,6 +43,15 @@ type WinnerMessage struct {
 	Number     uint16
 }
 
+type BetMessage struct {
+	Agency     byte
+	Nombre     string
+	Apellido   string
+	Documento  uint32
+	Cumpleanos string
+	Number     uint16
+}
+
 func ReadMessage(sock net.Conn) (int, []byte, error) {
 	header, err := safe_socket.RecvAll(sock, headerSize)
 
@@ -63,7 +72,7 @@ func ReadMessage(sock net.Conn) (int, []byte, error) {
 	return tipo, payload, nil
 }
 
-func packMessage(tipo byte, payload []byte) []byte {
+func encodeMessage(tipo byte, payload []byte) []byte {
 	header := make([]byte, headerSize)
 
 	header[0] = tipo
@@ -74,41 +83,34 @@ func packMessage(tipo byte, payload []byte) []byte {
 }
 
 func EncodeEnd() []byte {
-	return packMessage(End, []byte{})
+	return encodeMessage(End, []byte{})
 }
 
 func EncodeBetAck(number uint16) []byte {
 	numberBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(numberBytes, number)
-	return packMessage(BetAck, numberBytes)
+	return encodeMessage(BetAck, numberBytes)
 }
 
-func EncodeBet(agency byte, nombre, apellido string, documento uint32, cumpleanos string, number uint16) []byte {
-	nombreBytes := []byte(nombre)
-	apellidoBytes := []byte(apellido)
+func EncodeBet(bet BetMessage) []byte {
+	payload := make([]byte, 0, 3+len(bet.Nombre)+len(bet.Apellido)+10)
 
-	payload := make([]byte, 0, 3+len(nombreBytes)+len(apellidoBytes)+10)
-
-	payload = append(payload, agency)
-
-	payload = append(payload, byte(len(nombreBytes)))
-	payload = append(payload, nombreBytes...)
-
-	payload = append(payload, byte(len(apellidoBytes)))
-	payload = append(payload, apellidoBytes...)
+	payload = append(payload, bet.Agency)
+	payload = append(payload, encodePrefixedField(bet.Nombre)...)
+	payload = append(payload, encodePrefixedField(bet.Apellido)...)
 
 	documentoBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(documentoBytes, documento)
+	binary.BigEndian.PutUint32(documentoBytes, bet.Documento)
 	payload = append(payload, documentoBytes...)
 
-	payload = append(payload, encodeBirthdate(cumpleanos)...)
+	payload = append(payload, encodeBirthdate(bet.Cumpleanos)...)
 
 	numberBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(numberBytes, number)
+	binary.BigEndian.PutUint16(numberBytes, bet.Number)
 
 	payload = append(payload, numberBytes...)
 
-	return packMessage(Bet, payload)
+	return encodeMessage(Bet, payload)
 }
 
 func encodeBirthdate(cumpleanos string) []byte {
@@ -120,14 +122,8 @@ func encodeBirthdate(cumpleanos string) []byte {
 }
 
 func DecodeWinner(payload []byte) WinnerMessage {
-	largoNombre := int(payload[0])
-	nombre := string(payload[1 : 1+largoNombre])
-
-	pos := 1 + largoNombre
-	largoApellido := int(payload[pos])
-	pos++
-	apellido := string(payload[pos : pos+largoApellido])
-	pos += largoApellido
+	nombre, pos := readPrefixedField(payload, 0)
+	apellido, pos := readPrefixedField(payload, pos)
 
 	documento := binary.BigEndian.Uint32(payload[pos : pos+4])
 	pos += 4
@@ -148,4 +144,16 @@ func decodeBirthdate(birthdayBytes []byte) string {
 
 func DecodeBetAck(payload []byte) uint16 {
 	return binary.BigEndian.Uint16(payload)
+}
+
+func encodePrefixedField(value string) []byte {
+	valueBytes := []byte(value)
+	return append([]byte{byte(len(valueBytes))}, valueBytes...)
+}
+
+func readPrefixedField(payload []byte, pos int) (string, int) {
+	length := int(payload[pos])
+	start := pos + 1
+	end := start + length
+	return string(payload[start:end]), end
 }

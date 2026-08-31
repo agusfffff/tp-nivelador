@@ -115,7 +115,14 @@ func (client *Client) sendBets() error {
 				return err
 			}
 
-			message := protocol.EncodeBet(client.agency, row[0], row[1], uint32(documento), row[3], uint16(numberValue))
+			message := protocol.EncodeBet(protocol.BetMessage{
+				Agency:     client.agency,
+				Nombre:     row[0],
+				Apellido:   row[1],
+				Documento:  uint32(documento),
+				Cumpleanos: row[3],
+				Number:     uint16(numberValue),
+			})
 			if err := safe_socket.SendAll(client.conn, message); err != nil {
 				logger.Error("send-bet", logger.Fail)
 				return err
