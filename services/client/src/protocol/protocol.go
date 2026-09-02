@@ -87,7 +87,7 @@ func EncodeEnd() []byte {
 	return encodeMessage(End, []byte{})
 }
 
-func EncodeBetAck(number uint16) []byte {
+func EncodeAck(number uint16) []byte {
 	numberBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(numberBytes, number)
 	return encodeMessage(Ack, numberBytes)
@@ -155,7 +155,7 @@ func decodeBirthdate(birthdayBytes []byte) string {
 	return str[0:4] + "-" + str[4:6] + "-" + str[6:8]
 }
 
-func DecodeBetAck(payload []byte) uint16 {
+func DecodeAck(payload []byte) uint16 {
 	return binary.BigEndian.Uint16(payload)
 }
 

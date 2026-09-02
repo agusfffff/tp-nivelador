@@ -1,1 +1,1 @@
-from .protocol import read_message, encode_bet_ack, encode_winner, encode_end, Winner
+from .protocol import read_message, encode_bet_ack, encode_winner, encode_end, WinnerMessage, BetMessage
