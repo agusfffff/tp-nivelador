@@ -16,8 +16,8 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
-const CONNECTION_ATTEMPTS_MAX = 3
-const CONNECTION_ATTEMPS_DELAY_MS = 500
+const CONNECTION_ATTEMPTS_MAX = 6
+const CONNECTION_ATTEMPS_DELAY_MS = 1000
 
 type ClientConfig struct {
 	ServerHost string
@@ -25,12 +25,14 @@ type ClientConfig struct {
 	AgencyId   string
 	InputFile  string
 	OutputFile string
+	BatchSize  string
 }
 
 type Client struct {
-	conn   net.Conn
-	config ClientConfig
-	agency byte
+	conn      net.Conn
+	config    ClientConfig
+	agency    byte
+	batchSize int
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -45,7 +47,16 @@ func NewClient(config ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{conn: conn, config: config, agency: byte(agencyId)}, nil
+	batchSize, err := strconv.Atoi(config.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	if batchSize < 1 {
+		return nil, fmt.Errorf("tamaño de lote inválido: %d", batchSize)
+	}
+
+	return &Client{conn: conn, config: config, agency: byte(agencyId), batchSize: batchSize}, nil
 }
 
 func connectToServer(host, port string) (net.Conn, error) {
@@ -98,6 +109,7 @@ func (client *Client) sendBets() error {
 	defer inputFile.Close()
 
 	reader := bufio.NewReader(inputFile)
+	batch := make([]protocol.BetMessage, 0, client.batchSize)
 
 	for {
 		line, readErr := reader.ReadString('\n')
@@ -115,7 +127,7 @@ func (client *Client) sendBets() error {
 				return err
 			}
 
-			message := protocol.EncodeBet(protocol.BetMessage{
+			batch = append(batch, protocol.BetMessage{
 				Agency:     client.agency,
 				Nombre:     row[0],
 				Apellido:   row[1],
@@ -123,20 +135,12 @@ func (client *Client) sendBets() error {
 				Cumpleanos: row[3],
 				Number:     uint16(numberValue),
 			})
-			if err := safe_socket.SendAll(client.conn, message); err != nil {
-				logger.Error("send-bet", logger.Fail)
-				return err
+			if len(batch) == client.batchSize {
+				if err := client.SendBatch(batch); err != nil {
+					return err
+				}
+				batch = batch[:0]
 			}
-
-			tipo, payload, err := protocol.ReadMessage(client.conn)
-			if err != nil {
-				logger.Error("recv-bet-ack", logger.Fail)
-				return err
-			}
-			if tipo != protocol.BetAck {
-				return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
-			}
-			protocol.DecodeBetAck(payload)
 		}
 
 		if readErr == io.EOF {
@@ -148,6 +152,29 @@ func (client *Client) sendBets() error {
 		}
 	}
 
+	if len(batch) > 0 {
+		if err := client.SendBatch(batch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (client *Client) SendBatch(bets []protocol.BetMessage) error {
+	if err := safe_socket.SendAll(client.conn, protocol.EncodeBatch(bets)); err != nil {
+		logger.Error("send-batch", logger.Fail)
+		return err
+	}
+
+	tipo, payload, err := protocol.ReadMessage(client.conn)
+	if err != nil {
+		logger.Error("recv-batch-ack", logger.Fail)
+		return err
+	}
+	if tipo != protocol.Ack {
+		return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
+	}
+	protocol.DecodeBetAck(payload)
 	return nil
 }
 

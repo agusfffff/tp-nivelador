@@ -31,8 +31,9 @@ import (
 
 const Bet = 1
 const Winner = 2
-const BetAck = 3
+const Ack = 3
 const End = 4
+const Batch = 5
 const headerSize = 3
 
 type WinnerMessage struct {
@@ -89,10 +90,22 @@ func EncodeEnd() []byte {
 func EncodeBetAck(number uint16) []byte {
 	numberBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(numberBytes, number)
-	return encodeMessage(BetAck, numberBytes)
+	return encodeMessage(Ack, numberBytes)
 }
 
 func EncodeBet(bet BetMessage) []byte {
+	return encodeMessage(Bet, encodeBetPayload(bet))
+}
+
+func EncodeBatch(bets []BetMessage) []byte {
+	payload := make([]byte, 0)
+	for _, bet := range bets {
+		payload = append(payload, encodeBetPayload(bet)...)
+	}
+	return encodeMessage(Batch, payload)
+}
+
+func encodeBetPayload(bet BetMessage) []byte {
 	payload := make([]byte, 0, 3+len(bet.Nombre)+len(bet.Apellido)+10)
 
 	payload = append(payload, bet.Agency)
@@ -110,7 +123,7 @@ func EncodeBet(bet BetMessage) []byte {
 
 	payload = append(payload, numberBytes...)
 
-	return encodeMessage(Bet, payload)
+	return payload
 }
 
 func encodeBirthdate(cumpleanos string) []byte {

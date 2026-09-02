@@ -49,6 +49,7 @@ for i in $(seq 0 "$CLIENT_AMOUNT"); do
       - SERVER_PORT=5678
       - INPUT_FILE=/input/input-$i.csv
       - OUTPUT_FILE=/output/output-$i.csv
+      - BATCH_SIZE=2
     volumes: 
       - ./output:/output
       - ./input/input-$i.csv:/input/input-$i.csv

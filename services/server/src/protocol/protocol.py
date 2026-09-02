@@ -28,6 +28,7 @@ BET = 1
 WINNER = 2
 BET_ACK = 3
 END = 4
+BATCH = 5
 _HEADER_SIZE = 3
 
 
@@ -98,6 +99,29 @@ def decode_bet(payload) -> BetMessage:
     return BetMessage(agency,nombre,apellido,documento,cumpleanos,number)
 
 
+def _decode_bet_at(payload, pos) -> tuple[BetMessage, int]:
+    agency = int.from_bytes(payload[pos:pos + 1], 'big')
+    pos += 1
+    nombre, pos = _read_prefixed_field(payload, pos)
+    apellido, pos = _read_prefixed_field(payload, pos)
+    documento = int.from_bytes(payload[pos:pos + 4], 'big')
+    pos += 4
+    cumpleanos = decode_birthdate(payload[pos:pos + 4])
+    pos += 4
+    number = int.from_bytes(payload[pos:pos + 2], 'big')
+    pos += 2
+
+    return BetMessage(agency, nombre, apellido, documento, cumpleanos, number), pos
+
+
+def decode_batch(payload) -> list[BetMessage]:
+    bets = []
+    pos = 0
+    while pos < len(payload):
+        bet, pos = _decode_bet_at(payload, pos)
+        bets.append(bet)
+    return bets
+
 def decode_birthdate(birthday_bytes) -> str:
     "de AAAAMMDD a AAAA-MM-DD"
     birthday =int.from_bytes(birthday_bytes, 'big')
@@ -114,8 +138,8 @@ def decode_bet_ack(bytes_data) -> int:
 
 
 def decode_message(tipo, payload) -> BetMessage | int | None:
-    if tipo == BET:
-        return decode_bet(payload)
+    if tipo == BATCH:
+        return decode_batch(payload)
     elif tipo == BET_ACK:
         return decode_bet_ack(payload)
     elif tipo == END:

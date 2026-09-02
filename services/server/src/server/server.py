@@ -20,12 +20,14 @@ class Server:
                 data = read_message(client_socket)
                 if data is None: 
                     break 
-                agency, nombre, apellido, documento, birthday, number = data 
-                bet = Bet(agency, nombre, apellido, documento, birthday, number)
-                self.lottery.store_bets([bet])
+                agency = data[0].agency
+                bets = [ Bet(bet.agency, bet.nombre, bet.apellido, bet.documento, bet.cumpleanos, bet.number) 
+                    for bet in data ]
+                
+                self.lottery.store_bets(bets)
 
-                message_amount += 1
-                safe_socket.send_all(client_socket, encode_bet_ack(number))
+                message_amount += len(bets)
+                safe_socket.send_all(client_socket, encode_bet_ack(len(bets)))
 
             for bet in self.lottery.load_bets(): 
                 if bet.agency_id == agency and self.lottery.has_won(bet): 
