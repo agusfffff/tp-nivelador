@@ -31,6 +31,7 @@ ACK = 3
 END = 4
 BATCH = 5
 _HEADER_SIZE = 3
+_MAX_PAYLOAD_SIZE = 0xFFFF
 
 
 @dataclass
@@ -44,16 +45,16 @@ class BetMessage:
 
     @staticmethod
     def decode(payload, pos: int = 0) -> tuple['BetMessage', int]:
-        agency = int.from_bytes(payload[pos:pos + 1], 'big')
-        pos += 1
+        agency_bytes, pos = _take(payload, pos, 1)
+        agency = int.from_bytes(agency_bytes, 'big')
         nombre, pos = _read_prefixed_field(payload, pos)
         apellido, pos = _read_prefixed_field(payload, pos)
-        documento = int.from_bytes(payload[pos:pos + 4], 'big')
-        pos += 4
-        cumpleanos = _decode_birthdate(payload[pos:pos + 4])
-        pos += 4
-        number = int.from_bytes(payload[pos:pos + 4], 'big')
-        pos += 4
+        documento_bytes, pos = _take(payload, pos, 4)
+        documento = int.from_bytes(documento_bytes, 'big')
+        cumpleanos_bytes, pos = _take(payload, pos, 4)
+        cumpleanos = _decode_birthdate(cumpleanos_bytes)
+        number_bytes, pos = _take(payload, pos, 4)
+        number = int.from_bytes(number_bytes, 'big')
 
         return BetMessage(agency, nombre, apellido, documento, cumpleanos, number), pos
 
@@ -87,12 +88,16 @@ def encode_end() -> bytes:
     return encode_message(END, b'')
 
 def encode_bet_ack(number) -> bytes:
+    if number > 0xFFFF:
+        raise ValueError(f"cantidad de bets ackeados ({number}) excede el máximo representable (0xFFFF)")
     return encode_message(ACK, number.to_bytes(2, 'big'))
 
 def encode_winner(winner: WinnerMessage) -> bytes:
     return encode_message(WINNER, winner.encode_payload())
 
 def encode_message(tipo: int, payload: bytes) -> bytes:
+    if len(payload) > _MAX_PAYLOAD_SIZE:
+        raise ValueError(f"payload de {len(payload)} bytes excede el máximo de {_MAX_PAYLOAD_SIZE}")
     return tipo.to_bytes(1, 'big') + len(payload).to_bytes(2, 'big') + payload
 
 def _encode_prefixed_field(value: str) -> bytes:
@@ -136,7 +141,15 @@ def decode_message(tipo, payload) -> list[BetMessage] | int | None:
         raise ValueError(f"Tipo de mensaje desconocido: {tipo}")
 
 def _read_prefixed_field(payload: bytes, pos: int) -> tuple[str, int]:
-    length = payload[pos]
-    start = pos + 1
-    end = start + length
-    return payload[start:end].decode('utf-8'), end
+    length_bytes, pos = _take(payload, pos, 1)
+    length = length_bytes[0]
+    value_bytes, pos = _take(payload, pos, length)
+    return value_bytes.decode('utf-8'), pos
+
+def _take(payload: bytes, pos: int, n: int) -> tuple[bytes, int]:
+    end = pos + n
+    if end > len(payload):
+        raise ValueError(
+            f"payload truncado: se esperaban {n} bytes en la posición {pos}, quedan {len(payload) - pos}"
+        )
+    return payload[pos:end], end
