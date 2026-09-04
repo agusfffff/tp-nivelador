@@ -1,1 +1,1 @@
-from .coordinator import Coordinator
+from .coordinator import Coordinator, SHUTDOWN

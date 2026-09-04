@@ -1,5 +1,9 @@
 import queue
 
+import logger
+
+SHUTDOWN = object()
+
 
 class Coordinator:
     def __init__(self, agency_quorum_min: int, lottery, lottery_lock) -> None:
@@ -14,11 +18,22 @@ class Coordinator:
 
     def start(self):
         while True:
-            agency_id, client_channel = self.response_channel.get()
+            notify = self.response_channel.get()
+
+            if notify == SHUTDOWN:
+                clients = self.clients_channels.values() 
+                for client_channel in clients:
+                    client_channel.put(SHUTDOWN)
+                break
+
+            if isinstance(notify, tuple) and len(notify) == 2:
+                agency_id, client_channel = notify
+                logger.info("coordinator", logger.LogResult.in_progress, "new agency registered", agency_id)
 
             self.clients_channels[agency_id] = client_channel
 
             if len(self.clients_channels) >= self.agency_quorum_min:
+                logger.info("coordinator", logger.LogResult.success, "quorum reached")
                 with self.lottery_lock:
                     bets = list(self.lottery.load_bets())
 
