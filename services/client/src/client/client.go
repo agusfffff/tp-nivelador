@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -34,10 +35,11 @@ type Client struct {
 	agency    byte
 	batchSize int
 	sendBuf   []byte
+	ctx       context.Context
 }
 
-func NewClient(config ClientConfig) (*Client, error) {
-	conn, err := connectToServer(config.ServerHost, config.ServerPort)
+func NewClient(ctx context.Context, config ClientConfig) (*Client, error) {
+	conn, err := connectToServer(ctx, config.ServerHost, config.ServerPort)
 	if err != nil {
 		logger.Warn("connect-to-server", logger.Fail)
 		return nil, err
@@ -57,10 +59,10 @@ func NewClient(config ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("tamaño de lote inválido: %d", batchSize)
 	}
 
-	return &Client{conn: conn, config: config, agency: byte(agencyId), batchSize: batchSize}, nil
+	return &Client{conn: conn, config: config, agency: byte(agencyId), batchSize: batchSize, ctx: ctx}, nil
 }
 
-func connectToServer(host, port string) (net.Conn, error) {
+func connectToServer(ctx context.Context, host, port string) (net.Conn, error) {
 	const action = "connect-to-server"
 	var err error
 	var conn net.Conn
@@ -70,7 +72,11 @@ func connectToServer(host, port string) (net.Conn, error) {
 		conn, err = net.Dial("tcp", host+":"+port)
 		if err != nil {
 			logger.Warn(action, logger.Fail, "attempt", i)
-			time.Sleep(CONNECTION_ATTEMPS_DELAY_MS * time.Millisecond)
+			select {
+			case <-time.After(CONNECTION_ATTEMPS_DELAY_MS * time.Millisecond):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			continue
 		}
 
@@ -83,6 +89,11 @@ func connectToServer(host, port string) (net.Conn, error) {
 
 func (client *Client) Run() error {
 	defer client.conn.Close()
+
+	go func() {
+		<-client.ctx.Done()
+		client.conn.Close()
+	}()
 
 	if err := client.sendBets(); err != nil {
 		return err
