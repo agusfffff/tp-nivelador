@@ -11,7 +11,7 @@ PAYLOAD (variable, tamaño = largo payload)
   apellido:      M bytes   (UTF-8, variable)
   documento:     4 bytes
   cumpleaños:    4 bytes  (AAAAMMDD como un solo entero)
-  number:        2 bytes
+  number:        4 bytes
 
 header type:
 1 = BET       (cliente → servidor, una apuesta) -- ya no se emite, se reemplazó por BATCH
@@ -52,8 +52,8 @@ class BetMessage:
         pos += 4
         cumpleanos = _decode_birthdate(payload[pos:pos + 4])
         pos += 4
-        number = int.from_bytes(payload[pos:pos + 2], 'big')
-        pos += 2
+        number = int.from_bytes(payload[pos:pos + 4], 'big')
+        pos += 4
 
         return BetMessage(agency, nombre, apellido, documento, cumpleanos, number), pos
 
@@ -71,7 +71,7 @@ class WinnerMessage:
             _encode_prefixed_field(self.apellido) +
             self.documento.to_bytes(4, 'big') +
             _encode_birthdate(self.cumpleanos) +
-            self.number.to_bytes(2, 'big')
+            self.number.to_bytes(4, 'big')
         )
         return payload
 

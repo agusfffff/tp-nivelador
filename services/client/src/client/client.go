@@ -33,6 +33,7 @@ type Client struct {
 	config    ClientConfig
 	agency    byte
 	batchSize int
+	sendBuf   []byte
 }
 
 func NewClient(config ClientConfig) (*Client, error) {
@@ -122,7 +123,7 @@ func (client *Client) sendBets() error {
 			if err != nil {
 				return err
 			}
-			numberValue, err := strconv.ParseUint(row[4], 10, 16)
+			numberValue, err := strconv.ParseUint(row[4], 10, 32)
 			if err != nil {
 				return err
 			}
@@ -133,7 +134,7 @@ func (client *Client) sendBets() error {
 				Apellido:   row[1],
 				Documento:  uint32(documento),
 				Cumpleanos: row[3],
-				Number:     uint16(numberValue),
+				Number:     uint32(numberValue),
 			})
 			if len(batch) == client.batchSize {
 				if err := client.SendBatch(batch); err != nil {
@@ -161,7 +162,8 @@ func (client *Client) sendBets() error {
 }
 
 func (client *Client) SendBatch(bets []protocol.BetMessage) error {
-	if err := safe_socket.SendAll(client.conn, protocol.EncodeBatch(bets)); err != nil {
+	client.sendBuf = protocol.AppendBatch(client.sendBuf[:0], bets)
+	if err := safe_socket.SendAll(client.conn, client.sendBuf); err != nil {
 		logger.Error("send-batch", logger.Fail)
 		return err
 	}
