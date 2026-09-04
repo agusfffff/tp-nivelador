@@ -119,6 +119,9 @@ func (client *Client) sendBets() error {
 
 		if trimmed != "" {
 			row := strings.Split(trimmed, ",")
+			if len(row) != 5 {
+				return fmt.Errorf("línea inválida, se esperaban 5 campos y se encontraron %d: %q", len(row), trimmed)
+			}
 
 			documento, err := strconv.ParseUint(row[2], 10, 32)
 			if err != nil {
