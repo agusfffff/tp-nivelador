@@ -3,7 +3,7 @@ import socket
 import threading
 import logger
 import safe_socket
-from protocol import read_expected, encode_bet_ack, encode_winner, encode_end, WinnerMessage, BATCH, ACK
+from protocol import read_expected, encode_ack, encode_winner, encode_end, WinnerMessage, BATCH, ACK
 from lottery import Bet, Lottery
 from coordinator import Coordinator
 class Server:
@@ -32,7 +32,7 @@ class Server:
                     self.lottery.store_bets(bets)
 
                 message_amount += len(bets)
-                safe_socket.send_all(client_socket, encode_bet_ack(len(bets)))
+                safe_socket.send_all(client_socket, encode_ack())
 
             client_channel = queue.Queue() 
             self.coordinator.get_channel().put((agency, client_channel))

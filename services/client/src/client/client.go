@@ -184,7 +184,7 @@ func (client *Client) SendBatch(encodedBets [][]byte) error {
 		return err
 	}
 
-	tipo, payload, err := protocol.ReadMessage(client.conn)
+	tipo, _, err := protocol.ReadMessage(client.conn)
 	if err != nil {
 		logger.Error("recv-batch-ack", logger.Fail)
 		return err
@@ -192,7 +192,6 @@ func (client *Client) SendBatch(encodedBets [][]byte) error {
 	if tipo != protocol.Ack {
 		return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
 	}
-	protocol.DecodeAck(payload)
 	return nil
 }
 
@@ -243,7 +242,7 @@ func (client *Client) receiveWinners() error {
 			return err
 		}
 
-		if err := safe_socket.SendAll(client.conn, protocol.EncodeAck(winner.Number)); err != nil {
+		if err := safe_socket.SendAll(client.conn, protocol.EncodeAck()); err != nil {
 			logger.Error("send-winner-ack", logger.Fail)
 			return err
 		}

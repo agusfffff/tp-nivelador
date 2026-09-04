@@ -17,7 +17,7 @@ header type:
 1 = BET       (cliente → servidor, una apuesta) -- ya no se emite, se reemplazó por BATCH
 4 = END       (cliente → servidor, servidor → cliente, "ya mandé todo")
 2 = WINNER   (servidor → cliente, un winner)
-3 = ACK   (servidor → cliente, confirmación de éxito X batch de BETs recibido)
+3 = ACK   (cliente → servidor, servidor → cliente, confirmación de éxito, sin payload)
 5 = BATCH  (cliente → servidor, una o más apuestas concatenadas)
 
 """
@@ -79,14 +79,14 @@ class WinnerMessage:
         return payload
 
 
-def read_message(sock) -> tuple[int, list[BetMessage] | int | None]:
+def read_message(sock) -> tuple[int, list[BetMessage] | None]:
     header = safe_socket.recv_all(sock, _HEADER_SIZE)
     tipo = int.from_bytes(header[0:1], 'big')
     largo_payload = int.from_bytes(header[1:3], 'big')
     payload = safe_socket.recv_all(sock, largo_payload)
     return tipo, decode_message(tipo, payload)
 
-def read_expected(sock, expected_tipo) -> tuple[bool, list[BetMessage] | int | None]:
+def read_expected(sock, expected_tipo) -> tuple[bool, list[BetMessage] | None]:
     tipo, data = read_message(sock)
     if tipo == END:
         return True, None
@@ -97,10 +97,8 @@ def read_expected(sock, expected_tipo) -> tuple[bool, list[BetMessage] | int | N
 def encode_end() -> bytes:
     return encode_message(END, b'')
 
-def encode_bet_ack(number) -> bytes:
-    if number > _MAX_UINT16:
-        raise ValueError(f"cantidad de bets ackeados ({number}) excede el máximo representable ({_MAX_UINT16})")
-    return encode_message(ACK, number.to_bytes(2, 'big'))
+def encode_ack() -> bytes:
+    return encode_message(ACK, b'')
 
 def encode_winner(winner: WinnerMessage) -> bytes:
     return encode_message(WINNER, winner.encode_payload())
@@ -138,17 +136,11 @@ def _decode_birthdate(birthday_bytes) -> str:
     day = birthday_str[6:8]
     return f"{year}-{month}-{day}"
 
-def decode_ack(bytes_data) -> int:
-    if len(bytes_data) != 4:
-        raise ValueError(f"payload de ack inválido: se esperaban 4 bytes, se recibieron {len(bytes_data)}")
-    number = int.from_bytes(bytes_data, 'big')
-    return number
-
-def decode_message(tipo, payload) -> list[BetMessage] | int | None:
+def decode_message(tipo, payload) -> list[BetMessage] | None:
     if tipo == BATCH:
         return decode_batch(payload)
     elif tipo == ACK:
-        return decode_ack(payload)
+        return None
     elif tipo == END:
         return None
     else:

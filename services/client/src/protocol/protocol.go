@@ -18,7 +18,7 @@ header type:
 1 = BET       (cliente → servidor, una apuesta)
 4 = END       (cliente → servidor, servidor → cliente, "ya mandé todo")
 2 = WINNER   (servidor → cliente, un winner)
-3 = ACK   (cliente → servidor, servidor → cliente, confirmación de éxito X cada BET recibido) */
+3 = ACK   (cliente → servidor, servidor → cliente, confirmación de éxito, sin payload) */
 
 import (
 	"encoding/binary"
@@ -80,10 +80,8 @@ func EncodeEnd() []byte {
 	return newMessage(End, 0)
 }
 
-func EncodeAck(number uint32) []byte {
-	message := newMessage(Ack, 4)
-	binary.BigEndian.PutUint32(message[headerSize:], number)
-	return message
+func EncodeAck() []byte {
+	return newMessage(Ack, 0)
 }
 
 func EncodeBet(bet BetMessage) ([]byte, error) {
@@ -171,10 +169,6 @@ func decodeBirthdate(birthdayBytes []byte) string {
 	value := binary.BigEndian.Uint32(birthdayBytes)
 	str := strconv.FormatUint(uint64(value), 10)
 	return str[0:4] + "-" + str[4:6] + "-" + str[6:8]
-}
-
-func DecodeAck(payload []byte) uint16 {
-	return binary.BigEndian.Uint16(payload)
 }
 
 func appendPrefixedField(buf []byte, value string) ([]byte, error) {
