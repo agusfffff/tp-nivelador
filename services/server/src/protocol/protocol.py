@@ -131,6 +131,8 @@ def _decode_birthdate(birthday_bytes) -> str:
     "de AAAAMMDD a AAAA-MM-DD"
     birthday = int.from_bytes(birthday_bytes, 'big')
     birthday_str = str(birthday)
+    if len(birthday_str) != 8:
+        raise ValueError(f"fecha de nacimiento inválida: se esperaban 8 dígitos (AAAAMMDD), se recibió {birthday_str!r}")
     year = birthday_str[:4]
     month = birthday_str[4:6]
     day = birthday_str[6:8]
