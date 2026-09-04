@@ -32,6 +32,7 @@ END = 4
 BATCH = 5
 _HEADER_SIZE = 3
 _MAX_PAYLOAD_SIZE = 0xFFFF
+_MAX_FIELD_LENGTH = 0xFF
 
 
 @dataclass
@@ -102,6 +103,8 @@ def encode_message(tipo: int, payload: bytes) -> bytes:
 
 def _encode_prefixed_field(value: str) -> bytes:
     value_bytes = value.encode('utf-8')
+    if len(value_bytes) > _MAX_FIELD_LENGTH:
+        raise ValueError(f"campo de {len(value_bytes)} bytes excede el máximo de {_MAX_FIELD_LENGTH}")
     return len(value_bytes).to_bytes(1, 'big') + value_bytes
 
 def _encode_birthdate(cumpleanos) -> bytes:

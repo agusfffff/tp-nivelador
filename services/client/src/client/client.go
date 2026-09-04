@@ -218,7 +218,11 @@ func (client *Client) receiveWinners() error {
 			return fmt.Errorf("mensaje inesperado del servidor: %d", tipo)
 		}
 
-		winner := protocol.DecodeWinner(payload)
+		winner, err := protocol.DecodeWinner(payload)
+		if err != nil {
+			logger.Error("decode-winner", logger.Fail)
+			return err
+		}
 		row := []string{
 			winner.Nombre,
 			winner.Apellido,

@@ -38,6 +38,7 @@ const Batch = 5
 const headerSize = 3
 const MaxPayloadSize = 0xFFFF
 const betFixedSize = 15
+const MaxFieldLength = 0xFF
 
 type WinnerMessage struct {
 	Nombre     string
@@ -96,7 +97,11 @@ func AppendBatch(buf []byte, bets []BetMessage) ([]byte, error) {
 
 	payloadStart := len(buf)
 	for _, bet := range bets {
-		buf = appendBetPayload(buf, bet)
+		var err error
+		buf, err = appendBetPayload(buf, bet)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	payloadSize := len(buf) - payloadStart
@@ -115,14 +120,22 @@ func newMessage(tipo byte, payloadSize int) []byte {
 	return message
 }
 
-func appendBetPayload(buf []byte, bet BetMessage) []byte {
+func appendBetPayload(buf []byte, bet BetMessage) ([]byte, error) {
 	buf = append(buf, bet.Agency)
-	buf = appendPrefixedField(buf, bet.Nombre)
-	buf = appendPrefixedField(buf, bet.Apellido)
+
+	buf, err := appendPrefixedField(buf, bet.Nombre)
+	if err != nil {
+		return nil, fmt.Errorf("nombre: %w", err)
+	}
+	buf, err = appendPrefixedField(buf, bet.Apellido)
+	if err != nil {
+		return nil, fmt.Errorf("apellido: %w", err)
+	}
+
 	buf = binary.BigEndian.AppendUint32(buf, bet.Documento)
 	buf = binary.BigEndian.AppendUint32(buf, encodeBirthdate(bet.Cumpleanos))
 	buf = binary.BigEndian.AppendUint32(buf, bet.Number)
-	return buf
+	return buf, nil
 }
 
 func encodeBirthdate(cumpleanos string) uint32 {
@@ -131,19 +144,35 @@ func encodeBirthdate(cumpleanos string) uint32 {
 	return uint32(value)
 }
 
-func DecodeWinner(payload []byte) WinnerMessage {
-	nombre, pos := readPrefixedField(payload, 0)
-	apellido, pos := readPrefixedField(payload, pos)
+func DecodeWinner(payload []byte) (WinnerMessage, error) {
+	nombre, pos, err := readPrefixedField(payload, 0)
+	if err != nil {
+		return WinnerMessage{}, fmt.Errorf("nombre: %w", err)
+	}
+	apellido, pos, err := readPrefixedField(payload, pos)
+	if err != nil {
+		return WinnerMessage{}, fmt.Errorf("apellido: %w", err)
+	}
 
-	documento := binary.BigEndian.Uint32(payload[pos : pos+4])
-	pos += 4
+	documentoBytes, pos, err := take(payload, pos, 4)
+	if err != nil {
+		return WinnerMessage{}, fmt.Errorf("documento: %w", err)
+	}
+	documento := binary.BigEndian.Uint32(documentoBytes)
 
-	cumpleanos := decodeBirthdate(payload[pos : pos+4])
-	pos += 4
+	cumpleanosBytes, pos, err := take(payload, pos, 4)
+	if err != nil {
+		return WinnerMessage{}, fmt.Errorf("cumpleanos: %w", err)
+	}
+	cumpleanos := decodeBirthdate(cumpleanosBytes)
 
-	number := binary.BigEndian.Uint32(payload[pos : pos+4])
+	numberBytes, _, err := take(payload, pos, 4)
+	if err != nil {
+		return WinnerMessage{}, fmt.Errorf("number: %w", err)
+	}
+	number := binary.BigEndian.Uint32(numberBytes)
 
-	return WinnerMessage{nombre, apellido, documento, cumpleanos, number}
+	return WinnerMessage{nombre, apellido, documento, cumpleanos, number}, nil
 }
 
 func decodeBirthdate(birthdayBytes []byte) string {
@@ -156,15 +185,33 @@ func DecodeAck(payload []byte) uint16 {
 	return binary.BigEndian.Uint16(payload)
 }
 
-func appendPrefixedField(buf []byte, value string) []byte {
+func appendPrefixedField(buf []byte, value string) ([]byte, error) {
+	if len(value) > MaxFieldLength {
+		return nil, fmt.Errorf("campo de %d bytes excede el máximo de %d", len(value), MaxFieldLength)
+	}
 	buf = append(buf, byte(len(value)))
 	buf = append(buf, value...)
-	return buf
+	return buf, nil
 }
 
-func readPrefixedField(payload []byte, pos int) (string, int) {
-	length := int(payload[pos])
-	start := pos + 1
-	end := start + length
-	return string(payload[start:end]), end
+func readPrefixedField(payload []byte, pos int) (string, int, error) {
+	lengthByte, pos, err := take(payload, pos, 1)
+	if err != nil {
+		return "", 0, err
+	}
+	length := int(lengthByte[0])
+
+	value, pos, err := take(payload, pos, length)
+	if err != nil {
+		return "", 0, err
+	}
+	return string(value), pos, nil
+}
+
+func take(payload []byte, pos int, n int) ([]byte, int, error) {
+	end := pos + n
+	if end > len(payload) {
+		return nil, 0, fmt.Errorf("payload truncado: se esperaban %d bytes en la posición %d, quedan %d", n, pos, len(payload)-pos)
+	}
+	return payload[pos:end], end, nil
 }
