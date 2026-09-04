@@ -31,7 +31,8 @@ ACK = 3
 END = 4
 BATCH = 5
 _HEADER_SIZE = 3
-_MAX_PAYLOAD_SIZE = 0xFFFF
+_MAX_UINT16 = 0xFFFF  # límite de cualquier campo de 2 bytes del protocolo (largo de payload, contadores)
+_MAX_PAYLOAD_SIZE = _MAX_UINT16
 _MAX_FIELD_LENGTH = 0xFF
 
 
@@ -89,8 +90,8 @@ def encode_end() -> bytes:
     return encode_message(END, b'')
 
 def encode_bet_ack(number) -> bytes:
-    if number > 0xFFFF:
-        raise ValueError(f"cantidad de bets ackeados ({number}) excede el máximo representable (0xFFFF)")
+    if number > _MAX_UINT16:
+        raise ValueError(f"cantidad de bets ackeados ({number}) excede el máximo representable ({_MAX_UINT16})")
     return encode_message(ACK, number.to_bytes(2, 'big'))
 
 def encode_winner(winner: WinnerMessage) -> bytes:

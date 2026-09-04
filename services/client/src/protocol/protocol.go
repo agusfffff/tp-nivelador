@@ -37,7 +37,6 @@ const End = 4
 const Batch = 5
 const headerSize = 3
 const MaxPayloadSize = 0xFFFF
-const betFixedSize = 15
 const MaxFieldLength = 0xFF
 
 type WinnerMessage struct {
@@ -87,21 +86,32 @@ func EncodeAck(number uint32) []byte {
 	return message
 }
 
-func BetPayloadSize(bet BetMessage) int {
-	return betFixedSize + len(bet.Nombre) + len(bet.Apellido)
+func EncodeBet(bet BetMessage) ([]byte, error) {
+	var buf []byte
+	buf = append(buf, bet.Agency)
+
+	buf, err := appendPrefixedField(buf, bet.Nombre)
+	if err != nil {
+		return nil, fmt.Errorf("nombre: %w", err)
+	}
+	buf, err = appendPrefixedField(buf, bet.Apellido)
+	if err != nil {
+		return nil, fmt.Errorf("apellido: %w", err)
+	}
+
+	buf = binary.BigEndian.AppendUint32(buf, bet.Documento)
+	buf = binary.BigEndian.AppendUint32(buf, encodeBirthdate(bet.Cumpleanos))
+	buf = binary.BigEndian.AppendUint32(buf, bet.Number)
+	return buf, nil
 }
 
-func AppendBatch(buf []byte, bets []BetMessage) ([]byte, error) {
+func AppendBatch(buf []byte, encodedBets [][]byte) ([]byte, error) {
 	headerPos := len(buf)
 	buf = append(buf, Batch, 0, 0)
 
 	payloadStart := len(buf)
-	for _, bet := range bets {
-		var err error
-		buf, err = appendBetPayload(buf, bet)
-		if err != nil {
-			return nil, err
-		}
+	for _, encodedBet := range encodedBets {
+		buf = append(buf, encodedBet...)
 	}
 
 	payloadSize := len(buf) - payloadStart
@@ -118,24 +128,6 @@ func newMessage(tipo byte, payloadSize int) []byte {
 	message[0] = tipo
 	binary.BigEndian.PutUint16(message[1:3], uint16(payloadSize))
 	return message
-}
-
-func appendBetPayload(buf []byte, bet BetMessage) ([]byte, error) {
-	buf = append(buf, bet.Agency)
-
-	buf, err := appendPrefixedField(buf, bet.Nombre)
-	if err != nil {
-		return nil, fmt.Errorf("nombre: %w", err)
-	}
-	buf, err = appendPrefixedField(buf, bet.Apellido)
-	if err != nil {
-		return nil, fmt.Errorf("apellido: %w", err)
-	}
-
-	buf = binary.BigEndian.AppendUint32(buf, bet.Documento)
-	buf = binary.BigEndian.AppendUint32(buf, encodeBirthdate(bet.Cumpleanos))
-	buf = binary.BigEndian.AppendUint32(buf, bet.Number)
-	return buf, nil
 }
 
 func encodeBirthdate(cumpleanos string) uint32 {
