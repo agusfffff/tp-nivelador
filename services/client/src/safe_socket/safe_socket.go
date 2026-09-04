@@ -4,10 +4,8 @@ import "io"
 
 func SendAll(socket io.Writer, bytes []byte) error {
 	total := 0
-
 	for {
 		n, err := socket.Write(bytes[total:])
-
 		total += n
 
 		if total == len(bytes) {
@@ -27,7 +25,6 @@ func RecvAll(socket io.Reader, size int) ([]byte, error) {
 	total := 0
 	for {
 		n, err := socket.Read(buff[total:])
-
 		total += n
 
 		if total == size {

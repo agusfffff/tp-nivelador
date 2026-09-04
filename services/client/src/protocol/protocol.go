@@ -30,7 +30,6 @@ import (
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
-const Bet = 1
 const Winner = 2
 const Ack = 3
 const End = 4
@@ -40,20 +39,20 @@ const MaxPayloadSize = 0xFFFF
 const MaxFieldLength = 0xFF
 
 type WinnerMessage struct {
-	Nombre     string
-	Apellido   string
-	Documento  uint32
-	Cumpleanos string
-	Number     uint32
+	Name      string
+	Lastname  string
+	Document  uint32
+	Birthdate string
+	Number    uint32
 }
 
 type BetMessage struct {
-	Agency     byte
-	Nombre     string
-	Apellido   string
-	Documento  uint32
-	Cumpleanos string
-	Number     uint32
+	Agency    byte
+	Name      string
+	Lastname  string
+	Document  uint32
+	Birthdate string
+	Number    uint32
 }
 
 func ReadMessage(sock net.Conn) (int, []byte, error) {
@@ -64,9 +63,7 @@ func ReadMessage(sock net.Conn) (int, []byte, error) {
 	}
 
 	tipo := int(header[0])
-
 	largo_payload := int(binary.BigEndian.Uint16(header[1:3]))
-
 	payload, err := safe_socket.RecvAll(sock, largo_payload)
 
 	if err != nil {
@@ -88,17 +85,20 @@ func EncodeBet(bet BetMessage) ([]byte, error) {
 	var buf []byte
 	buf = append(buf, bet.Agency)
 
-	buf, err := appendPrefixedField(buf, bet.Nombre)
+	buf, err := appendPrefixedField(buf, bet.Name)
+
 	if err != nil {
-		return nil, fmt.Errorf("nombre: %w", err)
-	}
-	buf, err = appendPrefixedField(buf, bet.Apellido)
-	if err != nil {
-		return nil, fmt.Errorf("apellido: %w", err)
+		return nil, fmt.Errorf("name: %w", err)
 	}
 
-	buf = binary.BigEndian.AppendUint32(buf, bet.Documento)
-	buf = binary.BigEndian.AppendUint32(buf, encodeBirthdate(bet.Cumpleanos))
+	buf, err = appendPrefixedField(buf, bet.Lastname)
+
+	if err != nil {
+		return nil, fmt.Errorf("lastname: %w", err)
+	}
+
+	buf = binary.BigEndian.AppendUint32(buf, bet.Document)
+	buf = binary.BigEndian.AppendUint32(buf, encodeBirthdate(bet.Birthdate))
 	buf = binary.BigEndian.AppendUint32(buf, bet.Number)
 	return buf, nil
 }
@@ -106,18 +106,19 @@ func EncodeBet(bet BetMessage) ([]byte, error) {
 func AppendBatch(buf []byte, encodedBets [][]byte) ([]byte, error) {
 	headerPos := len(buf)
 	buf = append(buf, Batch, 0, 0)
-
 	payloadStart := len(buf)
+
 	for _, encodedBet := range encodedBets {
 		buf = append(buf, encodedBet...)
 	}
 
 	payloadSize := len(buf) - payloadStart
-	if payloadSize > MaxPayloadSize {
-		return nil, fmt.Errorf("batch payload de %d bytes excede el máximo de %d", payloadSize, MaxPayloadSize)
-	}
-	binary.BigEndian.PutUint16(buf[headerPos+1:headerPos+3], uint16(payloadSize))
 
+	if payloadSize > MaxPayloadSize {
+		return nil, fmt.Errorf("batch payload de %d bytes excede el maximo de %d", payloadSize, MaxPayloadSize)
+	}
+
+	binary.BigEndian.PutUint16(buf[headerPos+1:headerPos+3], uint16(payloadSize))
 	return buf, nil
 }
 
@@ -129,32 +130,32 @@ func newMessage(tipo byte, payloadSize int) []byte {
 }
 
 func encodeBirthdate(cumpleanos string) uint32 {
-	digits := strings.ReplaceAll(cumpleanos, "-", "")
-	value, _ := strconv.ParseUint(digits, 10, 32)
+	numbers := strings.ReplaceAll(cumpleanos, "-", "")
+	value, _ := strconv.ParseUint(numbers, 10, 32)
 	return uint32(value)
 }
 
 func DecodeWinner(payload []byte) (WinnerMessage, error) {
-	nombre, pos, err := readPrefixedField(payload, 0)
+	name, pos, err := readPrefixedField(payload, 0)
 	if err != nil {
-		return WinnerMessage{}, fmt.Errorf("nombre: %w", err)
+		return WinnerMessage{}, fmt.Errorf("name: %w", err)
 	}
-	apellido, pos, err := readPrefixedField(payload, pos)
+	lastname, pos, err := readPrefixedField(payload, pos)
 	if err != nil {
-		return WinnerMessage{}, fmt.Errorf("apellido: %w", err)
+		return WinnerMessage{}, fmt.Errorf("lastname: %w", err)
 	}
 
-	documentoBytes, pos, err := take(payload, pos, 4)
+	documentBytes, pos, err := take(payload, pos, 4)
 	if err != nil {
-		return WinnerMessage{}, fmt.Errorf("documento: %w", err)
+		return WinnerMessage{}, fmt.Errorf("document: %w", err)
 	}
-	documento := binary.BigEndian.Uint32(documentoBytes)
+	document := binary.BigEndian.Uint32(documentBytes)
 
-	cumpleanosBytes, pos, err := take(payload, pos, 4)
+	birthdateBytes, pos, err := take(payload, pos, 4)
 	if err != nil {
-		return WinnerMessage{}, fmt.Errorf("cumpleanos: %w", err)
+		return WinnerMessage{}, fmt.Errorf("birthdate: %w", err)
 	}
-	cumpleanos := decodeBirthdate(cumpleanosBytes)
+	birthdate := decodeBirthdate(birthdateBytes)
 
 	numberBytes, _, err := take(payload, pos, 4)
 	if err != nil {
@@ -162,7 +163,7 @@ func DecodeWinner(payload []byte) (WinnerMessage, error) {
 	}
 	number := binary.BigEndian.Uint32(numberBytes)
 
-	return WinnerMessage{nombre, apellido, documento, cumpleanos, number}, nil
+	return WinnerMessage{name, lastname, document, birthdate, number}, nil
 }
 
 func decodeBirthdate(birthdayBytes []byte) string {
@@ -173,7 +174,7 @@ func decodeBirthdate(birthdayBytes []byte) string {
 
 func appendPrefixedField(buf []byte, value string) ([]byte, error) {
 	if len(value) > MaxFieldLength {
-		return nil, fmt.Errorf("campo de %d bytes excede el máximo de %d", len(value), MaxFieldLength)
+		return nil, fmt.Errorf("campo de  %d bytes excede el maximo de %d", len(value), MaxFieldLength)
 	}
 	buf = append(buf, byte(len(value)))
 	buf = append(buf, value...)

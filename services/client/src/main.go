@@ -72,25 +72,24 @@ func run() int {
 
 	client, err := client.NewClient(ctx, config)
 	if err != nil {
-		if ctx.Err() != nil {
-			logger.Info("client-new", logger.Success, "reason", "sigterm")
-			return 0
-		}
-		logger.Error("client-new", logger.Fail, "err", err)
-		return 1
+		return checkError(ctx, err, "client-new", "sigterm")
 	}
 
 	if err := client.Run(); err != nil {
-		if ctx.Err() != nil {
-			logger.Info("client-run", logger.Success, "reason", "sigterm")
-			return 0
-		}
-		logger.Error("client-run", logger.Fail, "err", err)
-		return 1
+		return checkError(ctx, err, "client-run", "sigterm")
 	}
 	return 0
 }
 
 func main() {
 	os.Exit(run())
+}
+
+func checkError(ctx context.Context, err error, action string, reason string) int {
+	if ctx.Err() != nil {
+		logger.Info(action, logger.Success, "reason", reason)
+		return 0
+	}
+	logger.Error(action, logger.Fail, "err", err)
+	return 1
 }
