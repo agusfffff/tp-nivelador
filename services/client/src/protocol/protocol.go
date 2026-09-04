@@ -24,7 +24,6 @@ import (
 	"encoding/binary"
 	"net"
 	"strconv"
-	"strings"
 
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
@@ -115,10 +114,19 @@ func appendBetPayload(buf []byte, bet BetMessage) []byte {
 	return buf
 }
 
+// encodeBirthdate arma el entero AAAAMMDD a partir de "AAAA-MM-DD",
+// recorriendo el string dígito a dígito e ignorando los guiones. Evita
+// depender de strings.ReplaceAll, que asignaría un string nuevo por cada
+// apuesta procesada.
 func encodeBirthdate(cumpleanos string) uint32 {
-	digits := strings.ReplaceAll(cumpleanos, "-", "")
-	value, _ := strconv.ParseUint(digits, 10, 32)
-	return uint32(value)
+	var value uint32
+	for _, char := range cumpleanos {
+		if char == '-' {
+			continue
+		}
+		value = value*10 + uint32(char-'0')
+	}
+	return value
 }
 
 func DecodeWinner(payload []byte) WinnerMessage {

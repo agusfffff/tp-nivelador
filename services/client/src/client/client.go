@@ -2,7 +2,6 @@ package client
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 const CONNECTION_ATTEMPTS_MAX = 6
 const CONNECTION_ATTEMPS_DELAY_MS = 1000
+const CLIENT_MESSAGE_DELAY_MS = 8000
 
 type ClientConfig struct {
 	ServerHost string
@@ -109,48 +109,45 @@ func (client *Client) sendBets() error {
 	}
 	defer inputFile.Close()
 
-	reader := bufio.NewReader(inputFile)
+	scanner := bufio.NewScanner(inputFile)
 	batch := make([]protocol.BetMessage, 0, client.batchSize)
+	fields := make([][]byte, 0, 5)
 
-	for {
-		line, readErr := reader.ReadString('\n')
-		trimmed := strings.TrimRight(line, "\r\n")
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
 
-		if trimmed != "" {
-			row := strings.Split(trimmed, ",")
+		fields = splitLine(line, fields)
 
-			documento, err := strconv.ParseUint(row[2], 10, 32)
-			if err != nil {
+		documento, err := parseInt(fields[2])
+		if err != nil {
+			return err
+		}
+		number, err := parseInt(fields[4])
+		if err != nil {
+			return err
+		}
+
+		batch = append(batch, protocol.BetMessage{
+			Agency:     client.agency,
+			Nombre:     string(fields[0]),
+			Apellido:   string(fields[1]),
+			Documento:  uint32(documento),
+			Cumpleanos: string(fields[3]),
+			Number:     uint32(number),
+		})
+		if len(batch) == client.batchSize {
+			if err := client.SendBatch(batch); err != nil {
 				return err
 			}
-			numberValue, err := strconv.ParseUint(row[4], 10, 32)
-			if err != nil {
-				return err
-			}
-
-			batch = append(batch, protocol.BetMessage{
-				Agency:     client.agency,
-				Nombre:     row[0],
-				Apellido:   row[1],
-				Documento:  uint32(documento),
-				Cumpleanos: row[3],
-				Number:     uint32(numberValue),
-			})
-			if len(batch) == client.batchSize {
-				if err := client.SendBatch(batch); err != nil {
-					return err
-				}
-				batch = batch[:0]
-			}
+			batch = batch[:0]
 		}
-
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			logger.Error("read-input", logger.Fail)
-			return readErr
-		}
+	}
+	if err := scanner.Err(); err != nil {
+		logger.Error("read-input", logger.Fail)
+		return err
 	}
 
 	if len(batch) > 0 {
@@ -159,6 +156,29 @@ func (client *Client) sendBets() error {
 		}
 	}
 	return nil
+}
+
+func splitLine(line []byte, fields [][]byte) [][]byte {
+	fields = fields[:0]
+	start := 0
+	for i, b := range line {
+		if b == ',' {
+			fields = append(fields, line[start:i])
+			start = i + 1
+		}
+	}
+	return append(fields, line[start:])
+}
+
+func parseInt(field []byte) (uint64, error) {
+	var n uint64
+	for _, bInt := range field {
+		if bInt < '0' || bInt > '9' {
+			return 0, fmt.Errorf("campo numerico invalido: %q", field)
+		}
+		n = n*10 + uint64(bInt-'0')
+	}
+	return n, nil
 }
 
 func (client *Client) SendBatch(bets []protocol.BetMessage) error {
@@ -227,6 +247,8 @@ func (client *Client) receiveWinners() error {
 			logger.Error("send-winner-ack", logger.Fail)
 			return err
 		}
+
+		time.Sleep(CLIENT_MESSAGE_DELAY_MS * time.Millisecond)
 	}
 
 	return nil
