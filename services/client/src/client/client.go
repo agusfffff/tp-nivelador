@@ -111,6 +111,7 @@ func (client *Client) sendBets() error {
 
 	reader := bufio.NewReader(inputFile)
 	batch := make([]protocol.BetMessage, 0, client.batchSize)
+	payloadSize := 0
 
 	for {
 		line, readErr := reader.ReadString('\n')
@@ -128,20 +129,26 @@ func (client *Client) sendBets() error {
 				return err
 			}
 
-			batch = append(batch, protocol.BetMessage{
+			bet := protocol.BetMessage{
 				Agency:     client.agency,
 				Nombre:     row[0],
 				Apellido:   row[1],
 				Documento:  uint32(documento),
 				Cumpleanos: row[3],
 				Number:     uint32(numberValue),
-			})
-			if len(batch) == client.batchSize {
+			}
+			betSize := protocol.BetPayloadSize(bet)
+
+			if len(batch) > 0 && (len(batch) == client.batchSize || payloadSize+betSize > protocol.MaxPayloadSize) {
 				if err := client.SendBatch(batch); err != nil {
 					return err
 				}
 				batch = batch[:0]
+				payloadSize = 0
 			}
+
+			batch = append(batch, bet)
+			payloadSize += betSize
 		}
 
 		if readErr == io.EOF {
@@ -162,7 +169,13 @@ func (client *Client) sendBets() error {
 }
 
 func (client *Client) SendBatch(bets []protocol.BetMessage) error {
-	client.sendBuf = protocol.AppendBatch(client.sendBuf[:0], bets)
+	sendBuf, err := protocol.AppendBatch(client.sendBuf[:0], bets)
+	if err != nil {
+		logger.Error("encode-batch", logger.Fail)
+		return err
+	}
+	client.sendBuf = sendBuf
+
 	if err := safe_socket.SendAll(client.conn, client.sendBuf); err != nil {
 		logger.Error("send-batch", logger.Fail)
 		return err

@@ -22,6 +22,7 @@ header type:
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -35,6 +36,8 @@ const Ack = 3
 const End = 4
 const Batch = 5
 const headerSize = 3
+const MaxPayloadSize = 0xFFFF
+const betFixedSize = 15
 
 type WinnerMessage struct {
 	Nombre     string
@@ -83,7 +86,11 @@ func EncodeAck(number uint32) []byte {
 	return message
 }
 
-func AppendBatch(buf []byte, bets []BetMessage) []byte {
+func BetPayloadSize(bet BetMessage) int {
+	return betFixedSize + len(bet.Nombre) + len(bet.Apellido)
+}
+
+func AppendBatch(buf []byte, bets []BetMessage) ([]byte, error) {
 	headerPos := len(buf)
 	buf = append(buf, Batch, 0, 0)
 
@@ -93,9 +100,12 @@ func AppendBatch(buf []byte, bets []BetMessage) []byte {
 	}
 
 	payloadSize := len(buf) - payloadStart
+	if payloadSize > MaxPayloadSize {
+		return nil, fmt.Errorf("batch payload de %d bytes excede el máximo de %d", payloadSize, MaxPayloadSize)
+	}
 	binary.BigEndian.PutUint16(buf[headerPos+1:headerPos+3], uint16(payloadSize))
 
-	return buf
+	return buf, nil
 }
 
 func newMessage(tipo byte, payloadSize int) []byte {
