@@ -79,12 +79,20 @@ class WinnerMessage:
         return payload
 
 
-def read_message(sock) -> list[BetMessage] | int | None:
+def read_message(sock) -> tuple[int, list[BetMessage] | int | None]:
     header = safe_socket.recv_all(sock, _HEADER_SIZE)
     tipo = int.from_bytes(header[0:1], 'big')
     largo_payload = int.from_bytes(header[1:3], 'big')
     payload = safe_socket.recv_all(sock, largo_payload)
-    return decode_message(tipo, payload)
+    return tipo, decode_message(tipo, payload)
+
+def read_expected(sock, expected_tipo) -> tuple[bool, list[BetMessage] | int | None]:
+    tipo, data = read_message(sock)
+    if tipo == END:
+        return True, None
+    if tipo != expected_tipo:
+        raise ValueError(f"mensaje inesperado, se esperaba {expected_tipo} o END: tipo={tipo}")
+    return False, data
 
 def encode_end() -> bytes:
     return encode_message(END, b'')
@@ -131,6 +139,8 @@ def _decode_birthdate(birthday_bytes) -> str:
     return f"{year}-{month}-{day}"
 
 def decode_ack(bytes_data) -> int:
+    if len(bytes_data) != 4:
+        raise ValueError(f"payload de ack inválido: se esperaban 4 bytes, se recibieron {len(bytes_data)}")
     number = int.from_bytes(bytes_data, 'big')
     return number
 

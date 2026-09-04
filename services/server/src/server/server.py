@@ -3,7 +3,7 @@ import socket
 import threading
 import logger
 import safe_socket
-from protocol import read_message, encode_bet_ack, encode_winner, encode_end, WinnerMessage
+from protocol import read_expected, encode_bet_ack, encode_winner, encode_end, WinnerMessage, BATCH, ACK
 from lottery import Bet, Lottery
 from coordinator import Coordinator
 class Server:
@@ -21,8 +21,8 @@ class Server:
         try:
             logger.info(action, logger.LogResult.in_progress)
             while True:
-                data = read_message(client_socket)
-                if data is None:
+                is_end, data = read_expected(client_socket, BATCH)
+                if is_end:
                     break
                 agency = data[0].agency
                 bets = [ Bet(bet.agency, bet.nombre, bet.apellido, bet.documento, bet.cumpleanos, bet.number)
@@ -59,9 +59,9 @@ class Server:
                     )),
                 )
 
-                data = read_message(client_socket)
-                if data is None:
-                    break                  
+                is_end, _ = read_expected(client_socket, ACK)
+                if is_end:
+                    break
 
             safe_socket.send_all(client_socket, encode_end())
         except Exception as e:

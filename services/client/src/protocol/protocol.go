@@ -18,7 +18,7 @@ header type:
 1 = BET       (cliente → servidor, una apuesta)
 4 = END       (cliente → servidor, servidor → cliente, "ya mandé todo")
 2 = WINNER   (servidor → cliente, un winner)
-3 = BET_ACK   (servidor → cliente, confirmación de éxito X cada BET recibido) */
+3 = ACK   (cliente → servidor, servidor → cliente, confirmación de éxito X cada BET recibido) */
 
 import (
 	"encoding/binary"
