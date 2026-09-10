@@ -1,0 +1,6 @@
+{
+    "makefile.configureOnOpen": false,
+    "python.analysis.extraPaths": [
+        "./services/server/src_frozen"
+    ]
+}

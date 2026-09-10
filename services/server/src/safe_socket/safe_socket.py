@@ -1,11 +1,31 @@
 import socket
 
-# TODO: Complete with a short-read/short-write tolerant implementation
+
+def recv_all(sock: socket.socket, size):
+    total = 0 
+    buff = bytearray(size)
+    while total < size:
+        try:
+            n = sock.recv(size - total)
+        except socket.error:
+            raise RuntimeError("Socket connection closed")
+
+        buff[total:total+len(n)] = n
+
+        if len(n) == 0:
+            raise RuntimeError("Socket connection closed")
+
+        total += len(n)
+    return buff
 
 
-def recv_all(socket: socket.socket, size):
-    return socket.recv(size)
+def send_all(sock: socket.socket, bytes):
+    total = 0 
+    while total < len(bytes):
+        try:
+            n = sock.send(bytes[total:])
+        except socket.error:
+            raise RuntimeError("Socket connection closed")
 
-
-def send_all(socket: socket.socket, bytes):
-    return socket.send(bytes)
+        total += n
+    return total
